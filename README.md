@@ -1,3 +1,5 @@
+How to deploy!
+
 1. npx create-react-app pulsepoint cd pulsepoint
 
 2. Install Dependencies
@@ -11,14 +13,6 @@ nvm use 16.20.0
 npm install
 npm start
 
-Program Structure
 
-/src
-  ├── App.js
-  ├── index.js
-  └── components
-        ├── NavBar.js
-        ├── PatientDashboard.js
-        └── ClinicianDashboard.js
-
+![image](https://github.com/user-attachments/assets/c73b2c22-b33e-4ceb-956a-325668cb40a1)
 
