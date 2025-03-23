@@ -1,17 +1,68 @@
 // src/components/PatientDashboard.js
-import React, { useState, useEffect } from 'react';
-import { Typography, Paper, Button, Box, Fade, useTheme, CircularProgress, Snackbar, Alert } from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Typography, 
+  Paper, 
+  Button, 
+  Box, 
+  Fade, 
+  useTheme, 
+  CircularProgress, 
+  Snackbar, 
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from '@mui/material';
+import Papa from 'papaparse';
 
 function PatientDashboard() {
-  const [heartRate, setHeartRate] = useState(70);
-  const [alert, setAlert] = useState(false);
-  const [lastCheckTime, setLastCheckTime] = useState(new Date().toLocaleTimeString());
+  const [heartRate, setHeartRate] = useState(75);
+  const [alert, setAlert] = useState(null);
   const [elevatedStartTime, setElevatedStartTime] = useState(null);
   const [notificationSent, setNotificationSent] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [timeScale] = useState(360); // 1 second = 6 minutes for demonstration
+  const [simulatedTime, setSimulatedTime] = useState(new Date());
+  const [accountabilityBuddy, setAccountabilityBuddy] = useState({
+    name: "John Smith",
+    phone: "+1 (555) 123-4567"
+  });
+  const [heartRateData, setHeartRateData] = useState([]);
+  const [currentDataIndex, setCurrentDataIndex] = useState(0);
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const theme = useTheme();
+
+  // Convert demo time to real time for display
+  const formatDemoTime = useCallback((milliseconds) => {
+    // Convert milliseconds to hours and minutes, accounting for timeScale
+    const scaledMilliseconds = milliseconds * timeScale;
+    const totalMinutes = Math.floor(scaledMilliseconds / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }, [timeScale]);
+
+  const handleTakeMedication = () => {
+    setSnackbarMessage('✅ Medication taken successfully');
+    setSnackbarOpen(true);
+    
+    // Add notification to ClinicianDashboard
+    const notification = {
+      id: Date.now(),
+      type: 'success',
+      message: 'Patient has confirmed taking their medication',
+      timestamp: new Date().toLocaleString(),
+      severity: 'success'
+    };
+    
+    // In a real app, this would be sent to a backend API
+    // For now, we'll use localStorage to simulate communication between components
+    const existingNotifications = JSON.parse(localStorage.getItem('clinicianNotifications') || '[]');
+    localStorage.setItem('clinicianNotifications', JSON.stringify([notification, ...existingNotifications]));
+  };
 
   // Function to send notification to backend (mock implementation)
   const sendNotification = async (message, severity = 'info') => {
@@ -21,110 +72,123 @@ function PatientDashboard() {
     return new Promise(resolve => setTimeout(resolve, 1000));
   };
 
-  // Simulate more realistic heart rate changes
-  const getNextHeartRate = (currentRate) => {
-    // Demo cycle every 15 seconds
-    const cycleTime = Math.floor(Date.now() / 1000) % 15;
-    
-    // Different phases of the demo
-    switch(cycleTime) {
-      case 0:
-      case 1:
-      case 2:
-        // Normal heart rate (60-80)
-        return 70 + Math.floor(Math.random() * 10);
-      case 3:
-      case 4:
-      case 5:
-        // Slightly elevated (100-110)
-        return 105 + Math.floor(Math.random() * 5);
-      case 6:
-      case 7:
-      case 8:
-        // High heart rate (125-135)
-        return 130 + Math.floor(Math.random() * 5);
-      case 9:
-      case 10:
-      case 11:
-        // Coming down (90-100)
-        return 95 + Math.floor(Math.random() * 5);
-      default:
-        // Back to normal (70-80)
-        return 75 + Math.floor(Math.random() * 5);
-    }
-  };
-
-  // Convert demo time to real time for display
-  const formatDemoTime = (milliseconds) => {
-    // Speed up time display for demo
-    const demoHours = (milliseconds / (1000 * timeScale)) * 10; // 10x faster for demo
-    const hours = Math.floor(demoHours);
-    const minutes = Math.floor((demoHours - hours) * 60);
-    return `${hours}h ${minutes}m`;
-  };
-
-  // Simulate heart rate data and check for potential withdrawal symptoms
+  // Load CSV data
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newRate = getNextHeartRate(heartRate);
-      setHeartRate(newRate);
-      setLastCheckTime(new Date().toLocaleTimeString());
-      
-      const isElevated = newRate > 120;
-      setAlert(isElevated);
-
-      // Track duration of elevated heart rate
-      if (isElevated && !elevatedStartTime) {
-        setElevatedStartTime(new Date());
-        sendNotification("Heart rate becoming elevated - monitoring for withdrawal symptoms", "warning");
-      } else if (!isElevated && elevatedStartTime) {
-        const duration = formatDemoTime(new Date() - elevatedStartTime);
-        sendNotification(`Heart rate returned to normal after ${duration} of elevation`);
-        setElevatedStartTime(null);
-        setNotificationSent(false);
-      }
-
-      // Check if heart rate has been elevated for 6 hours and notification hasn't been sent
-      if (elevatedStartTime && !notificationSent) {
-        const hoursElapsed = (new Date() - elevatedStartTime) / (1000 * timeScale);
-        if (hoursElapsed >= 6) {
-          // Send notification
-          sendNotification(
-            "ALERT: Heart rate has been elevated for 6 hours - possible withdrawal symptoms",
-            "error"
-          ).then(() => {
-            setNotificationSent(true);
-            setSnackbarMessage("Medical alert sent to your care provider - they will contact you soon");
+    fetch('/data/heart_rate_data.csv')
+      .then(response => response.text())
+      .then(csvText => {
+        Papa.parse(csvText, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            console.log('CSV Data loaded:', results.data[0]);
+            setHeartRateData(results.data);
+          },
+          error: (error) => {
+            console.error('Error parsing CSV:', error);
+            setSnackbarMessage('Error loading heart rate data');
             setSnackbarOpen(true);
-          });
-        } else if (hoursElapsed >= 4 && !notificationSent) {
-          // Warning at 4 hours
-          sendNotification(
-            "Warning: Heart rate has been elevated for 4 hours",
-            "warning"
-          );
-        }
-      }
-    }, 1000); // Update every second (represents 6 minutes in demo time)
-    return () => clearInterval(interval);
-  }, [heartRate, elevatedStartTime, notificationSent, timeScale]);
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Error fetching CSV:', error);
+        setSnackbarMessage('Error loading heart rate data');
+        setSnackbarOpen(true);
+      });
+  }, []);
 
-  const handleCheckIn = async () => {
-    await sendNotification("URGENT: Patient requested immediate check-in", "error");
-    setSnackbarMessage("Emergency check-in alert sent to your care provider!");
-    setSnackbarOpen(true);
+  // Update simulated time and heart rates using CSV data
+  useEffect(() => {
+    if (!heartRateData.length) return;
+
+    const interval = setInterval(() => {
+      setSimulatedTime(prev => new Date(prev.getTime() + (1000 * timeScale)));
+      
+      setCurrentDataIndex(prevIndex => {
+        const nextIndex = (prevIndex + 1) % heartRateData.length;
+        const currentData = heartRateData[nextIndex];
+        
+        // Round the heart rate to the nearest whole number
+        const nextRate = Math.round(currentData.heart_rate_bpm);
+        setHeartRate(nextRate);
+        
+        const isElevated = nextRate > 120;
+        setAlert(isElevated);
+
+        // Track duration of elevated heart rate
+        if (isElevated && !elevatedStartTime) {
+          setElevatedStartTime(new Date());
+          sendNotification("Heart rate becoming elevated - monitoring for withdrawal symptoms", "warning");
+        } else if (!isElevated && elevatedStartTime) {
+          const duration = formatDemoTime(new Date() - elevatedStartTime);
+          sendNotification(`Heart rate returned to normal after ${duration} of elevation`);
+          setElevatedStartTime(null);
+          setNotificationSent(false);
+        }
+
+        // Check if heart rate has been elevated for 6 hours
+        if (elevatedStartTime && !notificationSent) {
+          const hoursElapsed = (new Date() - elevatedStartTime) / (1000 * 60 * 60 * timeScale);
+          if (hoursElapsed >= 6) {
+            sendNotification(
+              `ALERT: Heart rate elevated for 6 hours\nCurrent heart rate: ${nextRate} BPM`,
+              "error"
+            ).then(() => {
+              setNotificationSent(true);
+              setSnackbarMessage('⚠️ Alert sent to healthcare provider');
+              setSnackbarOpen(true);
+            });
+          }
+        }
+        
+        return nextIndex;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeScale, heartRateData, elevatedStartTime, notificationSent, formatDemoTime]);
+
+  // Format time for display
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
-  const handleTakeMedication = async () => {
-    await sendNotification("Patient confirmed medication taken", "success");
-    setSnackbarMessage("Medication confirmed as taken. Good job!");
-    setSnackbarOpen(true);
-    // Reset timers and alerts
-    setElevatedStartTime(null);
-    setNotificationSent(false);
-    setAlert(false);
-    // Set heart rate to a normal value
-    setHeartRate(75);
+  // Format date for display
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const handleSupportClick = () => {
+    setSupportDialogOpen(true);
+  };
+
+  const handleSupportClose = () => {
+    setSupportDialogOpen(false);
+  };
+
+  const handleEmergencyCall = () => {
+    window.location.href = 'tel:911';
+  };
+
+  const handleBuddyCall = () => {
+    window.location.href = `tel:${accountabilityBuddy.phone.replace(/\D/g, '')}`;
+  };
+
+  const handleHealthcareCall = () => {
+    // This would be replaced with actual healthcare provider number
+    window.location.href = 'tel:+1-555-0123';
   };
 
   const getHeartRateStatus = () => {
@@ -335,30 +399,41 @@ function PatientDashboard() {
                 textAlign: 'center',
                 fontWeight: 'medium'
               }}>
-                Last updated: {lastCheckTime}
+                Last updated: {formatTime(simulatedTime)}
               </Typography>
 
               {elevatedStartTime && (
-                <Typography variant="body1" sx={{ 
-                  color: theme.palette.error.main,
+                <Box sx={{ 
                   mt: 2,
-                  fontWeight: 'medium',
-                  textAlign: 'center',
-                  p: 1,
-                  borderRadius: 1,
-                  backgroundColor: theme.palette.error.light + '20'
+                  p: 2,
+                  borderRadius: 2,
+                  backgroundColor: theme.palette.error.light + '10',
+                  border: `1px solid ${theme.palette.error.light}20`
                 }}>
-                  Elevated for: {formatDemoTime(new Date() - elevatedStartTime)}
-                </Typography>
+                  <Typography variant="body1" sx={{ 
+                    color: theme.palette.error.main,
+                    fontWeight: 'medium',
+                    textAlign: 'center',
+                    mb: 1
+                  }}>
+                    Elevated for: {formatDemoTime(new Date() - elevatedStartTime)}
+                  </Typography>
+                  <Typography variant="body2" sx={{ 
+                    color: theme.palette.text.secondary,
+                    textAlign: 'center'
+                  }}>
+                    Time until 6-hour mark: {formatDemoTime((6 * 60 * 60 * 1000 * timeScale) - (new Date() - elevatedStartTime))}
+                  </Typography>
+                </Box>
               )}
             </Box>
-          </Paper>
+      </Paper>
         </Fade>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Fade in={true} style={{ transitionDelay: '100ms' }}>
             <Paper elevation={0} sx={{ 
-              p: 4, 
+              p: 4,
               borderRadius: 4,
               background: 'linear-gradient(145deg, #ffffff, #f8fafc)',
               border: '1px solid rgba(230, 232, 240, 0.5)',
@@ -380,8 +455,8 @@ function PatientDashboard() {
                 color: '#475569',
                 lineHeight: 1.6
               }}>
-                It's time for your Suboxone dose. Please take your medication as prescribed.
-              </Typography>
+          It's time for your Suboxone dose. Please take your medication as prescribed.
+        </Typography>
               <Button 
                 variant="contained" 
                 color="primary" 
@@ -402,8 +477,8 @@ function PatientDashboard() {
                 }}
               >
                 Confirm Medication Taken ✓
-              </Button>
-            </Paper>
+        </Button>
+      </Paper>
           </Fade>
 
           <Fade in={true} style={{ transitionDelay: '200ms' }}>
@@ -422,41 +497,125 @@ function PatientDashboard() {
                   backgroundClip: 'text',
                   color: 'transparent'
                 }}>
-                  Check-In
+                  Crisis Support
                 </Typography>
               </Box>
-              <Typography variant="body1" sx={{ 
-                mb: 3,
-                color: '#475569',
-                lineHeight: 1.6
-              }}>
-                If you feel unwell or experience withdrawal symptoms, please check in immediately.
-              </Typography>
-              <Button 
-                variant="contained" 
-                color="error" 
-                onClick={handleCheckIn}
-                fullWidth
-                sx={{ 
-                  borderRadius: 3,
-                  textTransform: 'none',
-                  py: 1.8,
-                  background: 'linear-gradient(45deg, #991b1b, #dc2626)',
-                  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)',
-                  transition: 'all 0.3s ease-in-out',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 6px 20px rgba(220, 38, 38, 0.3)',
-                    background: 'linear-gradient(45deg, #b91c1c, #ef4444)'
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body1" sx={{ 
+                  color: '#475569',
+                  lineHeight: 1.6,
+                  mb: 2
+                }}>
+                  {elevatedStartTime ? 
+                    `Your heart rate has been elevated for ${formatDemoTime(new Date() - elevatedStartTime)}. Contact your support network if you need assistance.` :
+                    'Your support network is here to help. Reach out if you need assistance with withdrawal symptoms or other concerns.'
                   }
-                }}
-              >
-                Check-In Now 🚨
-              </Button>
+                </Typography>
+                <Typography variant="body2" sx={{ 
+                  color: '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1
+                }}>
+                  <span>👤 Accountability Buddy:</span>
+                  <span style={{ fontWeight: 600 }}>{accountabilityBuddy.name}</span>
+                </Typography>
+                {accountabilityBuddy.lastNotified && (
+                  <Typography variant="body2" sx={{ 
+                    color: '#64748b',
+                    mt: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1
+                  }}>
+                    <span>🕒 Last notified:</span>
+                    <span>{accountabilityBuddy.lastNotified}</span>
+                  </Typography>
+                )}
+              </Box>
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 2,
+                mt: 3
+              }}>
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  onClick={handleSupportClick}
+                  fullWidth
+                  sx={{ 
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    py: 1.8,
+                    background: 'linear-gradient(45deg, #1a365d, #2563eb)',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
+                    transition: 'all 0.3s ease-in-out',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 6px 20px rgba(37, 99, 235, 0.3)',
+                      background: 'linear-gradient(45deg, #1e40af, #3b82f6)'
+                    }
+                  }}
+                >
+                  Support Network 🤝
+                </Button>
+              </Box>
             </Paper>
           </Fade>
         </Box>
       </Box>
+
+      {/* Support Network Dialog */}
+      <Dialog 
+        open={supportDialogOpen} 
+        onClose={handleSupportClose}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Support Network</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleEmergencyCall}
+              fullWidth
+              sx={{ 
+                py: 2,
+                background: 'linear-gradient(45deg, #991b1b, #dc2626)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #b91c1c, #ef4444)'
+                }
+              }}
+            >
+              Emergency Services (911) 🚨
+            </Button>
+            
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleBuddyCall}
+              fullWidth
+              sx={{ py: 2 }}
+            >
+              Call Accountability Buddy 📞
+            </Button>
+            
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleHealthcareCall}
+              fullWidth
+              sx={{ py: 2 }}
+            >
+              Call Healthcare Provider 👨‍⚕️
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSupportClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbarOpen}
@@ -484,51 +643,4 @@ function PatientDashboard() {
 
 export default PatientDashboard;
 
-  const handleTakeMedication = () => {
-    alert("Medication confirmed as taken. Good job!");
-  };
 
-  return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Welcome, Patient
-      </Typography>
-      <Paper sx={{ padding: 2, marginBottom: 2 }}>
-        <Typography variant="h6">Current Heart Rate: {heartRate} BPM</Typography>
-        {alert && (
-          <Typography variant="body1" color="error">
-            Alert: Your heart rate is high!
-          </Typography>
-        )}
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={heartData}>
-            <XAxis dataKey="time" label={{ value: 'Time (s)', position: 'insideBottomRight', offset: -5 }} />
-            <YAxis label={{ value: 'BPM', angle: -90, position: 'insideLeft' }} />
-            <Tooltip />
-            <Line type="monotone" dataKey="bpm" stroke="#8884d8" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Paper>
-      <Paper sx={{ padding: 2, marginBottom: 2 }}>
-        <Typography variant="h6">Medication Reminder</Typography>
-        <Typography variant="body1">
-          It's time for your Suboxone dose. Please take your medication as prescribed.
-        </Typography>
-        <Button variant="contained" color="primary" onClick={handleTakeMedication} sx={{ marginTop: 1 }}>
-          Confirm Medication Taken
-        </Button>
-      </Paper>
-      <Paper sx={{ padding: 2 }}>
-        <Typography variant="h6">Check-In</Typography>
-        <Typography variant="body1">
-          If you feel unwell, please check in to notify your care provider.
-        </Typography>
-        <Button variant="contained" color="secondary" onClick={handleCheckIn} sx={{ marginTop: 1 }}>
-          Check-In Now
-        </Button>
-      </Paper>
-    </Box>
-  );
-}
-
-export default PatientDashboard;

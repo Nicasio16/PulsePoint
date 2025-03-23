@@ -5,6 +5,7 @@ import { Container, Box } from '@mui/material';
 import NavBar from './components/NavBar';
 import PatientDashboard from './components/PatientDashboard';
 import ClinicianDashboard from './components/ClinicianDashboard';
+import AccountabilityBuddy from './components/AccountabilityBuddy';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Routes>
             <Route path="/" element={<PatientDashboard />} />
             <Route path="/clinician" element={<ClinicianDashboard />} />
+            <Route path="/buddies" element={<AccountabilityBuddy />} />
           </Routes>
         </Box>
       </Container>

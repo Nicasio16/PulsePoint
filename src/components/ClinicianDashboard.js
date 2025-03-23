@@ -112,8 +112,18 @@ function ClinicianDashboard() {
   // Check for new notifications periodically
   useEffect(() => {
     const notificationInterval = setInterval(() => {
-      checkForNotifications();
-    }, 30000); // Check every 30 seconds
+      // Check localStorage for new notifications
+      const storedNotifications = JSON.parse(localStorage.getItem('clinicianNotifications') || '[]');
+      if (storedNotifications.length > 0) {
+        setNotifications(prev => {
+          // Filter out duplicates based on id
+          const newNotifications = storedNotifications.filter(
+            stored => !prev.some(existing => existing.id === stored.id)
+          );
+          return [...newNotifications, ...prev];
+        });
+      }
+    }, 1000); // Check every second
     return () => clearInterval(notificationInterval);
   }, []);
 
@@ -538,45 +548,6 @@ function ClinicianDashboard() {
           {snackbarMessage}
         </Alert>
       </Snackbar>
-    </Box>
-  );
-}
-
-export default ClinicianDashboard;
-
-  const handleAcknowledgeAlert = () => {
-    alert("Alert acknowledged. Please contact the patient.");
-  };
-
-  return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Clinician Dashboard
-      </Typography>
-      <Paper sx={{ padding: 2, marginBottom: 2 }}>
-        <Typography variant="h6">Patient: {patientName}</Typography>
-        <Typography variant="body1">
-          Latest Heart Rate: {heartData.length > 0 ? heartData[heartData.length - 1].bpm : "Loading..."} BPM
-        </Typography>
-        {alert && (
-          <Typography variant="body1" color="error">
-            ALERT: Patient has a high heart rate!
-          </Typography>
-        )}
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={heartData}>
-            <XAxis dataKey="time" label={{ value: 'Time (s)', position: 'insideBottomRight', offset: -5 }} />
-            <YAxis label={{ value: 'BPM', angle: -90, position: 'insideLeft' }} />
-            <Tooltip />
-            <Line type="monotone" dataKey="bpm" stroke="#82ca9d" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Paper>
-      {alert && (
-        <Button variant="contained" color="error" onClick={handleAcknowledgeAlert}>
-          Acknowledge Alert & Call Patient
-        </Button>
-      )}
     </Box>
   );
 }
